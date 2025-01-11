@@ -1,0 +1,52 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:sha256-fff57a996ea17bad3163108f6f3221c7f5a43cac20bffea5082c49eb4d7950e5
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:sha256-ffbd605e4891c98d502bd78f474bbe424503cf81496a1bb2a71b58bc8f7742c1
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  redis:
+    image: redis:latest
+    container_name: bbs-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data  # Optional: persistent data storage
+
+  go_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bbs-logger
+    ports:
+      - "7889:7889"
+    depends_on:
+      - elasticsearch
+      - redis
+    environment:
+      - ELASTICSEARCH_HOSTS=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - REDIS_HOST=bbs-redis
+      - REDIS_PORT=6379
+
+volumes:
+  redis_data:
+  es_data:
+    driver: local
