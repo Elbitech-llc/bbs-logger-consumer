@@ -12,14 +12,10 @@ import (
 	"log"
 	"sync"
 
-	caching "bbs-logger-consumer/pkg"
+	"bbs-logger-consumer/pkg"
 
 	"github.com/go-redis/redis/v8"
 )
-
-// type Subscriber interface {
-// 	ListenForLogsUpdates() error
-// }
 
 type redisSubscriber struct {
 	s   services.Service
@@ -29,8 +25,13 @@ type redisSubscriber struct {
 }
 
 func NewRedisSubscriber(s services.Service, c *config.Config) sub.Subscriber {
+	if c == nil || c.Redis.Host == "" || c.Redis.Port == "" {
+		log.Println("Invalid configuration for RedisSubscriber")
+		return nil
+	}
+
 	// Initialize Redis
-	rdb, ctx, err := caching.InitializeRedis(c.RedisHost, c.RedisPort, c.RedisDB)
+	rdb, ctx, err := pkg.InitializeRedis(c.Redis.Host, c.Redis.Port, c.Redis.LogsDB)
 	if err != nil {
 		fmt.Printf("failed to initialize Redis: %v", err)
 		return nil
@@ -40,11 +41,18 @@ func NewRedisSubscriber(s services.Service, c *config.Config) sub.Subscriber {
 }
 
 func (rs *redisSubscriber) listenForLogsUpdates(ctx context.Context) {
-	ls := rs.rdb.Subscribe(ctx, rs.cfg.LogsChannel)
+	if rs.rdb == nil || rs.cfg == nil || rs.cfg.Logging.Channels.Logs == "" {
+		log.Println("Redis client or channel not configured for Logs")
+		return
+	}
+
+	ls := rs.rdb.Subscribe(ctx, rs.cfg.Logging.Channels.Logs)
 	defer ls.Close()
 
+	log.Println("Starting to listen for the channel LOGS")
+
 	for msg := range ls.Channel() {
-		fmt.Printf("Received log message: %s", msg.Payload)
+		fmt.Printf("Received: %s", msg.Payload)
 		var logMsg models.LogMessage
 
 		err := json.Unmarshal([]byte(msg.Payload), &logMsg)
@@ -69,11 +77,13 @@ func (rs *redisSubscriber) listenForLogsUpdates(ctx context.Context) {
 }
 
 func (rs *redisSubscriber) listenForInfoLogsUpdates(ctx context.Context) {
-	ls := rs.rdb.Subscribe(ctx, rs.cfg.InfoChannel)
+	ls := rs.rdb.Subscribe(ctx, rs.cfg.Logging.Channels.Info)
 	defer ls.Close()
 
+	log.Println("Starting to listen for the channel INFO logs")
+
 	for msg := range ls.Channel() {
-		fmt.Printf("Received log message: %s", msg.Payload)
+		fmt.Printf("Received: %s", msg.Payload)
 		var logMsg models.LogMessage
 
 		err := json.Unmarshal([]byte(msg.Payload), &logMsg)
@@ -98,11 +108,13 @@ func (rs *redisSubscriber) listenForInfoLogsUpdates(ctx context.Context) {
 }
 
 func (rs *redisSubscriber) listenForWarningLogsUpdates(ctx context.Context) {
-	ls := rs.rdb.Subscribe(ctx, rs.cfg.WarningChannel)
+	ls := rs.rdb.Subscribe(ctx, rs.cfg.Logging.Channels.Warning)
 	defer ls.Close()
 
+	log.Println("Starting to listen for the channel WARNING logs")
+
 	for msg := range ls.Channel() {
-		fmt.Printf("Received log message: %s", msg.Payload)
+		fmt.Printf("Received: %s", msg.Payload)
 		var logMsg models.LogMessage
 
 		err := json.Unmarshal([]byte(msg.Payload), &logMsg)
@@ -127,11 +139,13 @@ func (rs *redisSubscriber) listenForWarningLogsUpdates(ctx context.Context) {
 }
 
 func (rs *redisSubscriber) listenForErrorLogsUpdates(ctx context.Context) {
-	ls := rs.rdb.Subscribe(ctx, rs.cfg.ErrorChannel)
+	ls := rs.rdb.Subscribe(ctx, rs.cfg.Logging.Channels.Error)
 	defer ls.Close()
 
+	log.Println("Starting to listen for the channel ERROR logs")
+
 	for msg := range ls.Channel() {
-		fmt.Printf("Received error log message: %s", msg.Payload)
+		fmt.Printf("Received: %s", msg.Payload)
 		var logMsg models.LogMessage
 
 		err := json.Unmarshal([]byte(msg.Payload), &logMsg)
@@ -156,11 +170,13 @@ func (rs *redisSubscriber) listenForErrorLogsUpdates(ctx context.Context) {
 }
 
 func (rs *redisSubscriber) listenForCustomLogsUpdates(ctx context.Context) {
-	ls := rs.rdb.Subscribe(ctx, rs.cfg.DebugChannel)
+	ls := rs.rdb.Subscribe(ctx, rs.cfg.Logging.Channels.Error)
 	defer ls.Close()
 
+	log.Println("Starting to listen for the channel CUSTOM logs")
+
 	for msg := range ls.Channel() {
-		fmt.Printf("Received custom log message: %s", msg.Payload)
+		fmt.Printf("Received: %s", msg.Payload)
 		var logMsg models.LogMessage
 
 		err := json.Unmarshal([]byte(msg.Payload), &logMsg)
@@ -186,6 +202,14 @@ func (rs *redisSubscriber) listenForCustomLogsUpdates(ctx context.Context) {
 
 // ListenForLogsUpdates subscribes to Redis channels and processes logs
 func (rs *redisSubscriber) ListenForLogsUpdates() error {
+	if rs.cfg.Logging.Channels.Logs == "" ||
+		rs.cfg.Logging.Channels.Info == "" ||
+		rs.cfg.Logging.Channels.Warning == "" ||
+		rs.cfg.Logging.Channels.Error == "" {
+		log.Println("One or more Redis channel names are not configured")
+		return fmt.Errorf("invalid channel configuration")
+	}
+
 	// Create a wait group for concurrent processing
 	var wg sync.WaitGroup
 	errCh := make(chan error, 5) // Buffer size matches the number of goroutines
@@ -254,6 +278,10 @@ func (rs *redisSubscriber) safeListen(fn func(ctx context.Context)) error {
 			log.Printf("Recovered from panic in listener: %v", r)
 		}
 	}()
+
+	if rs.ctx == nil {
+		return fmt.Errorf("context is nil in safeListen")
+	}
 
 	fn(rs.ctx)
 	return nil

@@ -17,5 +17,4 @@ COPY . .
 EXPOSE 8484
 
 # Default command
-CMD go run ./cmd/migrate/main.go
-# && go run ./main.go
+CMD go run ./main.go

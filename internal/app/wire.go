@@ -8,6 +8,7 @@ import (
 	sub "bbs-logger-consumer/internal/subscriber"
 	"fmt"
 	"net/http"
+	"os"
 
 	iRepo "bbs-logger-consumer/internal/interfaces"
 	"bbs-logger-consumer/internal/repositories"
@@ -19,13 +20,32 @@ import (
 	"github.com/google/wire"
 )
 
+var (
+	ENV string
+)
+
+func getENV() {
+	env := os.Getenv("ENV")
+	if env == "" {
+		env = "dev" // Default to development if not set
+	}
+	ENV = env
+}
+
+// Provide the configuration
+func provideConfigs() *config.Config {
+	getENV()
+	// Access configuration statically
+	return config.LoadConfig(ENV)
+}
+
 // Provide Elasticsearch client
 func provideElasticClient() (*elasticsearch.Client, error) {
 	// Access configuration statically
-	configs := config.LoadConfig()
+	configs := provideConfigs()
 
 	cfg := elasticsearch.Config{
-		Addresses: []string{fmt.Sprintf("%s:%d", configs.DBHost, configs.DBPort)},
+		Addresses: []string{fmt.Sprintf("%s:%d", configs.DB.Host, configs.DB.Port)},
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost: 10,
 		},
@@ -33,36 +53,30 @@ func provideElasticClient() (*elasticsearch.Client, error) {
 	return elasticsearch.NewClient(cfg)
 }
 
-// Provide the indexes for logging
-func provideIndexes() map[string]string {
+// Provide the indices for logging
+func provideIndices() map[string]string {
 	// Access configuration statically
-	configs := config.LoadConfig()
+	configs := provideConfigs()
 
 	return map[string]string{
-		"general": configs.GeneralIndex,
-		"info":    configs.InfoIndex,
-		"warning": configs.WarningIndex,
-		"error":   configs.ErrorIndex,
-		"debug":   configs.DebugIndex,
+		"general": configs.DB.LogIndices.General,
+		"info":    configs.DB.LogIndices.Info,
+		"warning": configs.DB.LogIndices.Warning,
+		"error":   configs.DB.LogIndices.Error,
+		"debug":   configs.DB.LogIndices.Debug,
 	}
 }
 
-// Provide the configuration
-func provideConfigs() *config.Config {
-	// Access configuration statically
-	return config.LoadConfig()
-}
-
 // Provide the repository implementation
-func provideRepository(esClient *elasticsearch.Client, indexes map[string]string) iRepo.Repository {
-	return repositories.NewElasticRepository(esClient, indexes)
+func provideRepository(esClient *elasticsearch.Client, indices map[string]string) iRepo.Repository {
+	return repositories.NewElasticRepository(esClient, indices)
 }
 
 // InitializeService sets up the dependency injection for Service.
 func InitService() (serviceI.Service, error) {
 	wire.Build(
 		provideElasticClient,
-		provideIndexes,
+		provideIndices,
 		provideRepository,
 		services.NewService,
 	)
@@ -77,8 +91,8 @@ func provideSubscriber(s serviceI.Service, c *config.Config) iRepo.Subscriber {
 // Initialize Subscriber sets up the dependency injection for Service.
 func InitSubscriber() (iRepo.Subscriber, error) {
 	wire.Build(
-		InitService,
 		provideConfigs,
+		InitService,
 		provideSubscriber,
 	)
 	return nil, nil

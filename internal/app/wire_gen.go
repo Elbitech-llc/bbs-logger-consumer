@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"github.com/elastic/go-elasticsearch/v8"
 	"net/http"
+	"os"
 )
 
 // Injectors from wire.go:
@@ -26,7 +27,7 @@ func InitService() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := provideIndexes()
+	v := provideIndices()
 	repository := provideRepository(client, v)
 	service := services2.NewService(repository)
 	return service, nil
@@ -45,13 +46,32 @@ func InitSubscriber() (interfaces.Subscriber, error) {
 
 // wire.go:
 
+var (
+	ENV string
+)
+
+func getENV() {
+	env := os.Getenv("ENV")
+	if env == "" {
+		env = "dev"
+	}
+	ENV = env
+}
+
+// Provide the configuration
+func provideConfigs() *config.Config {
+	getENV()
+
+	return config.LoadConfig(ENV)
+}
+
 // Provide Elasticsearch client
 func provideElasticClient() (*elasticsearch.Client, error) {
 
-	configs := config.LoadConfig()
+	configs := provideConfigs()
 
 	cfg := elasticsearch.Config{
-		Addresses: []string{fmt.Sprintf("%s:%d", configs.DBHost, configs.DBPort)},
+		Addresses: []string{fmt.Sprintf("%s:%d", configs.DB.Host, configs.DB.Port)},
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost: 10,
 		},
@@ -59,29 +79,23 @@ func provideElasticClient() (*elasticsearch.Client, error) {
 	return elasticsearch.NewClient(cfg)
 }
 
-// Provide the indexes for logging
-func provideIndexes() map[string]string {
+// Provide the indices for logging
+func provideIndices() map[string]string {
 
-	configs := config.LoadConfig()
+	configs := provideConfigs()
 
 	return map[string]string{
-		"general": configs.GeneralIndex,
-		"info":    configs.InfoIndex,
-		"warning": configs.WarningIndex,
-		"error":   configs.ErrorIndex,
-		"debug":   configs.DebugIndex,
+		"general": configs.DB.LogIndices.General,
+		"info":    configs.DB.LogIndices.Info,
+		"warning": configs.DB.LogIndices.Warning,
+		"error":   configs.DB.LogIndices.Error,
+		"debug":   configs.DB.LogIndices.Debug,
 	}
 }
 
-// Provide the configuration
-func provideConfigs() *config.Config {
-
-	return config.LoadConfig()
-}
-
 // Provide the repository implementation
-func provideRepository(esClient *elasticsearch.Client, indexes map[string]string) interfaces.Repository {
-	return repositories.NewElasticRepository(esClient, indexes)
+func provideRepository(esClient *elasticsearch.Client, indices map[string]string) interfaces.Repository {
+	return repositories.NewElasticRepository(esClient, indices)
 }
 
 // Provide the subscriber implementation

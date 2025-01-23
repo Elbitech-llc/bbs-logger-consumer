@@ -1,0 +1,34 @@
+{
+    "DB": {
+        "Type": "elk",
+        "Host": "http://localhost",
+        "Port": 9201,
+
+        "LogIndices": {
+            "General": "logs",
+            "Info": "info_logs",
+            "Warning": "warning_logs",
+            "Error": "error_logs",
+            "Debug": "debug_logs"
+        }
+    },
+
+    "Redis": {
+        "Host": "localhost",
+        "Port": "63799",
+        "LogsDB": 5
+    },
+
+    "Logging": {
+        "IsPubSub": true,
+        "LogsFilePath": "fallback_logs.json",
+
+        "Channels": {
+            "Logs": "logs",
+            "Info": "info_logs",
+            "Warning": "warning_logs",
+            "Error": "error_logs",
+            "Debug": "debug_logs"
+        }
+    }
+}

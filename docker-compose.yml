@@ -41,10 +41,13 @@ services:
       - elasticsearch
       - redis
     environment:
+      - ENV=prod
       - ELASTICSEARCH_HOSTS=elasticsearch
       - ELASTICSEARCH_PORT=9200
       - REDIS_HOST=bbs-redis
       - REDIS_PORT=6379
+    volumes:
+      - ./config:/app/config
 
 volumes:
   redis_data:
